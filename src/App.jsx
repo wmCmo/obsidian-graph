@@ -2,6 +2,8 @@ import ForceGraph2D from 'react-force-graph-2d';
 import { useRef, useEffect, useCallback, useMemo, useState } from 'react';
 import { forceX, forceY } from 'd3-force';
 import courses from './assets/courses';
+import courseTags from './assets/courseTags';
+import ArrowCounterClockwise from './assets/icons/arrow-counter-clockwise.svg';
 
 const App = () => {
   const refGraph = useRef(null);
@@ -13,17 +15,43 @@ const App = () => {
   const [hoverNode, setHoverNode] = useState(null);
   const [selectedNode, setSelectedNode] = useState(null);
 
-  const rawData = useMemo(() => {
-    const nodes = Array.from({ length: 100 }, (_, i) => ({ id: `id${i}`, name: `Name${i}`, value: 5 }));
-    const links = Array.from({ length: 100 }, (_, i) => ({ source: `id${i}`, target: (i == 99) || (i == 49) ? "id0" : `id${i + 1}` })).concat([
-      { source: "id2", target: "id42" },
-      { source: "id9", target: "id42" },
-      { source: "id23", target: "id42" },
-      { source: "id69", target: "id42" },
-      { source: "id88", target: "id42" }
-    ]);
+  // const rawData = useMemo(() => {
+  //   const nodes = Array.from({ length: 1000 }, (_, i) => ({ id: `id${i}`, name: `Name${i}`, value: 5 }));
+  //   const links = Array.from({ length: 800 }, (_, i) => ({ source: `id${i}`, target: (i == 99) || (i == 49) ? "id0" : `id${i + 1}` })).concat([
+  //     { source: "id2", target: "id42" },
+  //     { source: "id9", target: "id42" },
+  //     { source: "id23", target: "id42" },
+  //     { source: "id69", target: "id42" },
+  //     { source: "id88", target: "id42" }
+  //   ]);
+  //   return { nodes, links };
+  // }, []);
+
+  // useEffect(() => {
+  //   const spawnCircle = e => {
+  //     const circle = document.createElement('div');
+  //     circle.className = 'ripple-circle';
+  //     circle.style.left = `${e.clientX - 24}px`;
+  //     circle.style.top = `${e.clientY - 24}px`;
+  //     document.body.appendChild(circle);
+  //     circle.addEventListener('animationend', () => circle.remove());
+  //   };
+  //   document.addEventListener('click', spawnCircle);
+
+  //   return () => document.removeEventListener('click', spawnCircle);
+  // }, []);
+
+  const rawCourseTags = useMemo(() => {
+    const nodes = courseTags.map(courseTag => {
+      courseTag.value = 10;
+      return courseTag;
+    });
+    const links = courseTags.flatMap(courseTag => (courseTag.targets || []).map(tag => ({ source: courseTag.id, target: tag })));
     return { nodes, links };
   }, []);
+
+  const [rawNodes, setRawNodes] = useState(rawCourseTags);
+
 
   const rawCourses = useMemo(() => {
 
@@ -35,16 +63,24 @@ const App = () => {
 
   const getId = n => (typeof n === 'object' ? n.id : n);
 
-  const coursesData = useMemo(() => {
-    const { nodes, links } = rawCourses;
+  const feedData = useMemo(() => {
+    const { nodes, links } = rawNodes;
+
+    // Normalize links so source/target are always IDs.
+    // react-force-graph mutates link objects in-place (turning ids into node objects).
+    // If we rebuild nodes as new objects but reuse mutated links, links can point to stale objects and appear "frozen".
+    const normalizedLinks = links.map(link => ({
+      ...link,
+      source: getId(link.source),
+      target: getId(link.target)
+    }));
 
     const linkCount = {};
     const neighborMap = {};
 
-
-    links.forEach(link => {
-      const sourceId = getId(link.source);
-      const targetId = getId(link.target);
+    normalizedLinks.forEach(link => {
+      const sourceId = link.source;
+      const targetId = link.target;
       linkCount[sourceId] = (linkCount[sourceId] || 0) + 1;
       linkCount[targetId] = (linkCount[targetId] || 0) + 1;
 
@@ -61,8 +97,8 @@ const App = () => {
       neighbors: neighborMap[node.id] || new Set()
     }));
 
-    return { nodes: sizedNodes, links };
-  }, [rawCourses]);
+    return { nodes: sizedNodes, links: normalizedLinks };
+  }, [rawNodes]);
 
   // const graphData = useMemo(() => {
   //   const { nodes, links } = rawData;
@@ -92,7 +128,7 @@ const App = () => {
     refGraph.current.d3Force('charge').strength(-100);
 
     zoomTarget.current = refGraph.current.zoom();
-  }, [coursesData]);
+  }, [feedData]);
 
   const handleWheel = useCallback(e => {
     e.preventDefault();
@@ -129,13 +165,33 @@ const App = () => {
   const nodeDesc = courses.find(course => course.name === selectedNode?.name)?.desc;
 
   return (
-    <main style={{ display: "flex" }}>
-      <div ref={containerRef}>
-        <ForceGraph2D ref={refGraph} graphData={coursesData}
+    <main style={{ display: "flex", backgroundColor: "#262626" }}>
+      <div ref={containerRef} style={{ overflow: 'hidden', position: "relative" }}>
+        <img
+          onClick={() => {
+            setHoverNode(null);
+            setSelectedNode(null);
+            setRawNodes(rawCourseTags);
+          }}
+          src={ArrowCounterClockwise}
+          alt="reset icon"
+          style={{ position: "absolute", zIndex: 10, top: "1em", left: "1em" }}
+        />
+        <ForceGraph2D ref={refGraph} graphData={feedData}
 
           width={520}
           onNodeHover={node => setHoverNode(node || null)}
-          onNodeClick={node => setSelectedNode(node)}
+          onNodeClick={(node, event) => {
+            setSelectedNode(node);
+            if (rawNodes === rawCourses) return;
+            setRawNodes(rawCourses);
+            const circle = document.createElement('div');
+            circle.className = 'ripple-circle';
+            circle.style.left = `${event.clientX - 16}px`;
+            circle.style.top = `${event.clientY - 16}px`;
+            containerRef.current.appendChild(circle);
+            circle.addEventListener('animationend', () => circle.remove());
+          }}
           backgroundColor='#1e1e1e'
           nodeLabel={node => {
             const currentZoom = refGraph.current ? refGraph.current.zoom() : 1;
@@ -169,7 +225,7 @@ const App = () => {
           }}
           nodeCanvasObjectMode={() => 'after'}
           nodeCanvasObject={(node, ctx, globalScale) => {
-            const label = node.name;
+            const label = `${node.name}`;
             const fontSize = 12 / globalScale;
 
             // OPTIONAL: Hide text if zoomed out too far (Obsidian style)
@@ -198,6 +254,15 @@ const App = () => {
           enableZoomInteraction={false}
           enablePanInteraction={true}
         />
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "flex-start", color: "#DADADA", paddingLeft: "4em" }}>
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: "2em" }}>
+            <h1>{selectedNode?.name || "Click some node to get started"}</h1>
+            {!nodeDesc && <span style={{ fontWeight: "bold", backgroundColor: "#804994", padding: ".5em", borderRadius: ".5em" }}>#tag</span>}
+          </div>
+          <p>{nodeDesc}</p>
+        </div>
       </div>
     </main>
   );

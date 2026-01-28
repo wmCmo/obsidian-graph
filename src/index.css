@@ -1,0 +1,17 @@
+.ripple-circle {
+    position: absolute;
+    width: 2em;
+    height: 2em;
+    border-radius: 50%;
+    background-color: #b794f4;
+    pointer-events: none;
+    /* opacity: 0.6; */
+    animation: expandFade 1s forwards;
+}
+
+@keyframes expandFade {
+    to {
+        transform: scale(40);
+        opacity: 0;
+    }
+}
